@@ -63,12 +63,20 @@ export default function SpeechSynthesis() {
   const [language, setLanguage] = useState("English-detected")
   const [liked, setLiked] = useState<boolean | null>(null)
   const [selectedVoice, setSelectedVoice] = useState("conversational_a")
+  const [voiceInstruct, setVoiceInstruct] = useState("A friendly, warm female voice with clear pronunciation and a pleasant tone.")
+  const [seed, setSeed] = useState("")
+  const [useFixedSeed, setUseFixedSeed] = useState(true)
 
   const audioRef = useRef<HTMLAudioElement | null>(null)
 
   // Helper function to check if the model is a Marvis model
   const isMarvisModel = (modelName: string) => {
     return modelName.toLowerCase().includes("marvis")
+  }
+
+  // Helper function to check if the model is a Qwen3 VoiceDesign model
+  const isQwen3VoiceDesign = (modelName: string) => {
+    return modelName.toLowerCase().includes("voice-design") || modelName.toLowerCase().includes("voicedesign")
   }
 
   // Helper function to get available quantizations for a model
@@ -137,18 +145,40 @@ export default function SpeechSynthesis() {
     const voice = (model.includes("marvis") ? "conversational_a" : "af_heart");
 
     try {
+      const requestBody: any = {
+        model: model,
+        input: text,
+        voice: voice,
+        speed: speed,
+      };
+
+      // Add instruct parameter for Qwen3 VoiceDesign models
+      if (isQwen3VoiceDesign(model)) {
+        requestBody.instruct = voiceInstruct;
+        // Add seed for reproducible voice generation
+        if (useFixedSeed) {
+          // Use a hash of the voice description as seed, or a fixed seed if provided
+          if (seed.trim()) {
+            requestBody.seed = parseInt(seed, 10);
+          } else {
+            // Generate a consistent seed from the voice description
+            let hash = 0;
+            for (let i = 0; i < voiceInstruct.length; i++) {
+              const char = voiceInstruct.charCodeAt(i);
+              hash = ((hash << 5) - hash) + char;
+              hash = hash & hash; // Convert to 32bit integer
+            }
+            requestBody.seed = Math.abs(hash);
+          }
+        }
+      }
+
       const response = await fetch(`${API_BASE_URL}:${API_PORT}/v1/audio/speech`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          model: model, // Or the specific model identifier if different
-          input: text,
-          voice: voice,
-          speed: speed,
-          // pitch and other parameters can be added here if supported by the backend
-        }),
+        body: JSON.stringify(requestBody),
       })
 
       if (!response.ok) {
@@ -299,6 +329,7 @@ export default function SpeechSynthesis() {
                       <option value="Marvis-AI/marvis-tts-250m-v0.1">Marvis-TTS-250m-v0.1</option>
                       <option value="mlx-community/Kokoro-82M-bf16">Kokoro</option>
                       <option value="mlx-community/Spark-TTS-0.5B-bf16">SparkTTS</option>
+                      <option value="mlx-community/Qwen3-TTS-12Hz-1.7B-VoiceDesign-bf16">Qwen3-TTS VoiceDesign</option>
                     </select>
                     <ChevronDown className="absolute right-2 top-2 h-4 w-4 pointer-events-none" />
                   </div>
@@ -333,7 +364,55 @@ export default function SpeechSynthesis() {
                 </div>
               </div>
 
+              {isQwen3VoiceDesign(baseModel) && (
+                <div className="mb-6">
+                  <label className="block text-sm mb-2">Voice Description</label>
+                  <textarea
+                    className="w-full rounded-md border border-gray-200 dark:border-gray-700 p-2 text-sm bg-white dark:bg-gray-800 focus:border-blue-500 focus:outline-none"
+                    value={voiceInstruct}
+                    onChange={(e) => setVoiceInstruct(e.target.value)}
+                    placeholder="Describe the voice you want (e.g., 'A friendly, warm female voice with clear pronunciation')"
+                    rows={3}
+                  />
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    Use natural language to describe the voice characteristics (gender, age, tone, emotion, etc.)
+                  </p>
 
+                  <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-sm flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={useFixedSeed}
+                          onChange={(e) => setUseFixedSeed(e.target.checked)}
+                          className="rounded border-gray-300 text-sky-500 focus:ring-sky-500"
+                        />
+                        Consistent voice (same output each time)
+                      </label>
+                    </div>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
+                      When enabled, the same voice description will always produce the same voice.
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        value={seed}
+                        onChange={(e) => setSeed(e.target.value)}
+                        placeholder="Optional: custom seed"
+                        className="flex-1 rounded-md border border-gray-200 dark:border-gray-700 px-2 py-1 text-sm bg-white dark:bg-gray-800 focus:border-blue-500 focus:outline-none"
+                        disabled={!useFixedSeed}
+                      />
+                      <button
+                        onClick={() => setSeed(Math.floor(Math.random() * 1000000).toString())}
+                        disabled={!useFixedSeed}
+                        className="px-2 py-1 text-xs rounded-md border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50"
+                      >
+                        Random
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <div className="mb-6">
                 <div className="mb-2 flex items-center justify-between">

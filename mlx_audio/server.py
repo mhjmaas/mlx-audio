@@ -167,6 +167,7 @@ class SpeechRequest(BaseModel):
     top_p: float | None = 0.95
     top_k: int | None = 40
     repetition_penalty: float | None = 1.0
+    seed: int | None = None
     response_format: str | None = "mp3"
     stream: bool = False
     streaming_interval: float = 2.0
@@ -261,6 +262,12 @@ async def remove_model(model_name: str):
 
 
 async def generate_audio(model, payload: SpeechRequest):
+    import mlx.core as mx
+
+    # Set random seed for reproducibility if provided
+    if payload.seed is not None:
+        mx.random.seed(payload.seed)
+
     # Load reference audio if provided
     ref_audio = payload.ref_audio
     audio_chunks = []

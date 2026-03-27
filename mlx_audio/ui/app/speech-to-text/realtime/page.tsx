@@ -12,7 +12,7 @@ export default function RealtimeTranscriptionPage() {
   const [transcript, setTranscript] = useState<string>("")
   const [streamingText, setStreamingText] = useState<string>("")
   const [language, setLanguage] = useState("Detect")
-  const [selectedModel, setSelectedModel] = useState("mlx-community/whisper-large-v3-turbo-asr-fp16")
+  const [selectedModel, setSelectedModel] = useState("mlx-community/Voxtral-Mini-4B-Realtime-2602-4bit")
   const [streaming, setStreaming] = useState(false)
   const [status, setStatus] = useState<"idle" | "connecting" | "ready" | "recording" | "error">("idle")
   const [error, setError] = useState<string | null>(null)
