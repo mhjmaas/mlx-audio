@@ -239,6 +239,122 @@ async def add_model(model_name: str):
     return {"status": "success", "message": f"Model {model_name} added successfully"}
 
 
+VOICE_CATALOG = {
+    "marvis": {
+        "type": "marvis",
+        "voices": [
+            {"id": "conversational_a", "label": "Conversational A"},
+            {"id": "conversational_b", "label": "Conversational B"},
+        ],
+        "supports_cloning": True,
+    },
+    "kokoro": {
+        "type": "kokoro",
+        "voices": [
+            {"id": "af_heart",    "label": "Heart",     "group": "American English — Female", "lang_code": "a"},
+            {"id": "af_alloy",    "label": "Alloy",     "group": "American English — Female", "lang_code": "a"},
+            {"id": "af_aoede",    "label": "Aoede",     "group": "American English — Female", "lang_code": "a"},
+            {"id": "af_bella",    "label": "Bella",     "group": "American English — Female", "lang_code": "a"},
+            {"id": "af_jessica",  "label": "Jessica",   "group": "American English — Female", "lang_code": "a"},
+            {"id": "af_kore",     "label": "Kore",      "group": "American English — Female", "lang_code": "a"},
+            {"id": "af_nicole",   "label": "Nicole",    "group": "American English — Female", "lang_code": "a"},
+            {"id": "af_nova",     "label": "Nova",      "group": "American English — Female", "lang_code": "a"},
+            {"id": "af_river",    "label": "River",     "group": "American English — Female", "lang_code": "a"},
+            {"id": "af_sarah",    "label": "Sarah",     "group": "American English — Female", "lang_code": "a"},
+            {"id": "af_sky",      "label": "Sky",       "group": "American English — Female", "lang_code": "a"},
+            {"id": "am_adam",     "label": "Adam",      "group": "American English — Male",   "lang_code": "a"},
+            {"id": "am_echo",     "label": "Echo",      "group": "American English — Male",   "lang_code": "a"},
+            {"id": "am_eric",     "label": "Eric",      "group": "American English — Male",   "lang_code": "a"},
+            {"id": "am_fenrir",   "label": "Fenrir",    "group": "American English — Male",   "lang_code": "a"},
+            {"id": "am_liam",     "label": "Liam",      "group": "American English — Male",   "lang_code": "a"},
+            {"id": "am_michael",  "label": "Michael",   "group": "American English — Male",   "lang_code": "a"},
+            {"id": "am_onyx",     "label": "Onyx",      "group": "American English — Male",   "lang_code": "a"},
+            {"id": "am_orion",    "label": "Orion",     "group": "American English — Male",   "lang_code": "a"},
+            {"id": "am_puck",     "label": "Puck",      "group": "American English — Male",   "lang_code": "a"},
+            {"id": "am_santa",    "label": "Santa",     "group": "American English — Male",   "lang_code": "a"},
+            {"id": "bf_alice",    "label": "Alice",     "group": "British English — Female",  "lang_code": "b"},
+            {"id": "bf_emma",     "label": "Emma",      "group": "British English — Female",  "lang_code": "b"},
+            {"id": "bf_isabella", "label": "Isabella",  "group": "British English — Female",  "lang_code": "b"},
+            {"id": "bf_lily",     "label": "Lily",      "group": "British English — Female",  "lang_code": "b"},
+            {"id": "bm_daniel",   "label": "Daniel",    "group": "British English — Male",    "lang_code": "b"},
+            {"id": "bm_fable",    "label": "Fable",     "group": "British English — Male",    "lang_code": "b"},
+            {"id": "bm_george",   "label": "George",    "group": "British English — Male",    "lang_code": "b"},
+            {"id": "bm_lewis",    "label": "Lewis",     "group": "British English — Male",    "lang_code": "b"},
+            {"id": "ef_dora",     "label": "Dora",      "group": "Spanish — Female",          "lang_code": "e"},
+            {"id": "em_alex",     "label": "Alex",      "group": "Spanish — Male",            "lang_code": "e"},
+            {"id": "em_santa",    "label": "Santa",     "group": "Spanish — Male",            "lang_code": "e"},
+            {"id": "ff_siwis",    "label": "Siwis",     "group": "French — Female",           "lang_code": "f"},
+            {"id": "hf_alpha",    "label": "Alpha",     "group": "Hindi — Female",            "lang_code": "h"},
+            {"id": "hf_beta",     "label": "Beta",      "group": "Hindi — Female",            "lang_code": "h"},
+            {"id": "hm_omega",    "label": "Omega",     "group": "Hindi — Male",              "lang_code": "h"},
+            {"id": "hm_psi",      "label": "Psi",       "group": "Hindi — Male",              "lang_code": "h"},
+            {"id": "if_sara",     "label": "Sara",      "group": "Italian — Female",          "lang_code": "i"},
+            {"id": "im_nicola",   "label": "Nicola",    "group": "Italian — Male",            "lang_code": "i"},
+            {"id": "pf_dora",     "label": "Dora",      "group": "Portuguese — Female",       "lang_code": "p"},
+            {"id": "pm_alex",     "label": "Alex",      "group": "Portuguese — Male",         "lang_code": "p"},
+            {"id": "pm_santa",    "label": "Santa",     "group": "Portuguese — Male",         "lang_code": "p"},
+            {"id": "jf_alpha",    "label": "Alpha",     "group": "Japanese — Female",         "lang_code": "j"},
+            {"id": "jf_gongitsune", "label": "Gongitsune", "group": "Japanese — Female",      "lang_code": "j"},
+            {"id": "jf_nezumi",   "label": "Nezumi",    "group": "Japanese — Female",         "lang_code": "j"},
+            {"id": "jf_tebukuro", "label": "Tebukuro",  "group": "Japanese — Female",         "lang_code": "j"},
+            {"id": "jm_kumo",     "label": "Kumo",      "group": "Japanese — Male",           "lang_code": "j"},
+            {"id": "zf_xiaobei",  "label": "Xiaobei",   "group": "Mandarin Chinese — Female", "lang_code": "z"},
+            {"id": "zf_xiaoni",   "label": "Xiaoni",    "group": "Mandarin Chinese — Female", "lang_code": "z"},
+            {"id": "zf_xiaoxiao", "label": "Xiaoxiao",  "group": "Mandarin Chinese — Female", "lang_code": "z"},
+            {"id": "zf_xiaoyi",   "label": "Xiaoyi",    "group": "Mandarin Chinese — Female", "lang_code": "z"},
+            {"id": "zm_yunjian",  "label": "Yunjian",   "group": "Mandarin Chinese — Male",   "lang_code": "z"},
+            {"id": "zm_yunxi",    "label": "Yunxi",     "group": "Mandarin Chinese — Male",   "lang_code": "z"},
+            {"id": "zm_yunxia",   "label": "Yunxia",    "group": "Mandarin Chinese — Male",   "lang_code": "z"},
+            {"id": "zm_yunyang",  "label": "Yunyang",   "group": "Mandarin Chinese — Male",   "lang_code": "z"},
+        ],
+        "supports_cloning": False,
+        "supports_blending": True,
+    },
+    "spark": {
+        "type": "spark",
+        "voices": [],
+        "supports_cloning": True,
+        "supports_create": True,
+        "genders": ["male", "female"],
+        "pitch_levels": ["very_low", "low", "moderate", "high", "very_high"],
+        "speed_levels": ["very_low", "low", "moderate", "high", "very_high"],
+    },
+    "qwen3": {
+        "type": "qwen3",
+        "voices": [],
+        "supports_instruct": True,
+    },
+}
+
+_MODEL_FAMILY_MAP = {
+    "marvis": "marvis",
+    "kokoro": "kokoro",
+    "spark": "spark",
+    "qwen3": "qwen3",
+    "voicedesign": "qwen3",
+    "voice-design": "qwen3",
+}
+
+
+def _get_model_family(model_name: str) -> str:
+    lower = model_name.lower()
+    for key, family in _MODEL_FAMILY_MAP.items():
+        if key in lower:
+            return family
+    return "qwen3"
+
+
+@app.get("/v1/voices")
+async def list_voices(model: Optional[str] = None):
+    """Return voice options for a given model, or the full catalog if no model is specified."""
+    if model:
+        family = _get_model_family(model)
+        return {"model": model, **VOICE_CATALOG[family]}
+    return {
+        family: data for family, data in VOICE_CATALOG.items()
+    }
+
+
 @app.delete("/v1/models")
 async def remove_model(model_name: str):
     """

@@ -669,6 +669,17 @@ class Model(nn.Module):
             peak_memory_usage=mx.get_peak_memory() / 1e9,
         )
 
+    def _apply_speed(self, audio: mx.array, speed: float) -> mx.array:
+        if abs(speed - 1.0) < 1e-6:
+            return audio
+        old_length = int(audio.shape[0])
+        new_length = max(1, int(old_length / speed))
+        positions = mx.linspace(0, old_length - 1, new_length)
+        left = mx.floor(positions).astype(mx.int32)
+        right = mx.minimum(left + 1, old_length - 1)
+        right_weight = positions - left
+        return (1.0 - right_weight) * audio[left] + right_weight * audio[right]
+
     def generate(
         self,
         text: List[str] | str,
@@ -683,6 +694,7 @@ class Model(nn.Module):
         stream: bool = False,
         streaming_interval: float = 0.5,
         voice_match: bool = True,
+        speed: float = 1.0,
         **kwargs,
     ):
         # Load reference audio if provided (handles file paths and mx.array)
@@ -793,12 +805,16 @@ class Model(nn.Module):
                         >= streaming_interval_tokens
                     ):
                         yielded_frame_count = generated_frame_count
-                        yield self.generate_result(samples, start_time, stream=True)
+                        result = self.generate_result(samples, start_time, stream=True)
+                        result.audio = self._apply_speed(result.audio, speed)
+                        yield result
                         samples = []
                         start_time = time.perf_counter()
 
                 if len(samples) > 0:
-                    yield self.generate_result(samples, start_time, stream=stream)
+                    result = self.generate_result(samples, start_time, stream=stream)
+                    result.audio = self._apply_speed(result.audio, speed)
+                    yield result
 
                 # Clear cache after each segment to avoid memory leaks
                 mx.clear_cache()

@@ -5,7 +5,19 @@ import type React from "react"
 import { useState, useRef } from "react"
 import { ChevronDown, Download, ThumbsUp, ThumbsDown, Play, Pause, RefreshCw } from "lucide-react"
 import { LayoutWrapper } from "@/components/layout-wrapper"
-import { VoiceSelection } from "@/components/voice-selection"
+import { MarvisVoiceSettings } from "@/components/marvis-voice-settings"
+import { KokoroVoiceSettings } from "@/components/kokoro-voice-settings"
+import { SparkVoiceSettings } from "@/components/spark-voice-settings"
+import {
+  type VoiceSettings,
+  getModelFamily,
+  DEFAULT_MARVIS,
+  DEFAULT_KOKORO,
+  DEFAULT_SPARK,
+  DEFAULT_QWEN3,
+  SPARK_PITCH_MAP,
+  SPARK_SPEED_MAP,
+} from "@/lib/voice-types"
 
 // Custom range input component with colored progress
 function RangeInput({
@@ -62,36 +74,22 @@ export default function SpeechSynthesis() {
   const [quantization, setQuantization] = useState("6bit")
   const [language, setLanguage] = useState("English-detected")
   const [liked, setLiked] = useState<boolean | null>(null)
-  const [selectedVoice, setSelectedVoice] = useState("conversational_a")
-  const [voiceInstruct, setVoiceInstruct] = useState("A friendly, warm female voice with clear pronunciation and a pleasant tone.")
-  const [seed, setSeed] = useState("")
-  const [useFixedSeed, setUseFixedSeed] = useState(true)
+  const [voiceSettings, setVoiceSettings] = useState<VoiceSettings>({
+    family: "marvis",
+    ...DEFAULT_MARVIS,
+  })
 
   const audioRef = useRef<HTMLAudioElement | null>(null)
 
-  // Helper function to check if the model is a Marvis model
-  const isMarvisModel = (modelName: string) => {
-    return modelName.toLowerCase().includes("marvis")
-  }
+  const isMarvisModel = (modelName: string) => modelName.toLowerCase().includes("marvis")
 
-  // Helper function to check if the model is a Qwen3 VoiceDesign model
-  const isQwen3VoiceDesign = (modelName: string) => {
-    return modelName.toLowerCase().includes("voice-design") || modelName.toLowerCase().includes("voicedesign")
-  }
-
-  // Helper function to get available quantizations for a model
   const getAvailableQuantizations = (modelName: string) => {
-    if (modelName === "Marvis-AI/marvis-tts-100m-v0.2") {
-      return ["none", "6bit", "8bit"]
-    } else if (modelName === "Marvis-AI/marvis-tts-250m-v0.2") {
-      return ["none", "4bit", "6bit", "8bit"]
-    } else if (modelName === "Marvis-AI/marvis-tts-250m-v0.1") {
-      return ["none", "4bit", "8bit"]
-    }
+    if (modelName === "Marvis-AI/marvis-tts-100m-v0.2") return ["none", "6bit", "8bit"]
+    if (modelName === "Marvis-AI/marvis-tts-250m-v0.2") return ["none", "4bit", "6bit", "8bit"]
+    if (modelName === "Marvis-AI/marvis-tts-250m-v0.1") return ["none", "4bit", "8bit"]
     return []
   }
 
-  // Helper function to construct the full model name
   const getFullModelName = () => {
     if (isMarvisModel(baseModel) && quantization !== "none") {
       return `${baseModel}-MLX-${quantization}`
@@ -99,8 +97,31 @@ export default function SpeechSynthesis() {
     return baseModel
   }
 
-  // Get the current full model name
   const model = getFullModelName()
+
+  const showPitchSlider =
+    voiceSettings.family === "marvis" || voiceSettings.family === "kokoro"
+
+  const isGenerateDisabled =
+    isGenerating ||
+    (voiceSettings.family === "spark" &&
+      voiceSettings.mode === "clone" &&
+      (!voiceSettings.refAudioPath.trim() || !voiceSettings.refText.trim()))
+
+  const voiceDisplayLabel = (() => {
+    switch (voiceSettings.family) {
+      case "marvis":
+        return voiceSettings.refAudioPath ? "Cloned voice" : voiceSettings.voice
+      case "kokoro":
+        return voiceSettings.voice
+      case "spark":
+        return voiceSettings.mode === "clone"
+          ? "Cloned voice"
+          : `${voiceSettings.gender} / ${voiceSettings.pitchLevel} pitch`
+      case "qwen3":
+        return "Custom voice"
+    }
+  })()
 
   const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setText(e.target.value)
@@ -108,7 +129,6 @@ export default function SpeechSynthesis() {
 
   const handleModelChange = (newModel: string) => {
     setBaseModel(newModel)
-    // Set default quantization based on available options
     if (isMarvisModel(newModel)) {
       const availableQuants = getAvailableQuantizations(newModel)
       if (availableQuants.includes("6bit")) {
@@ -117,16 +137,20 @@ export default function SpeechSynthesis() {
         setQuantization(availableQuants[0])
       }
     }
+    const family = getModelFamily(newModel)
+    switch (family) {
+      case "marvis": setVoiceSettings({ family: "marvis", ...DEFAULT_MARVIS }); break
+      case "kokoro": setVoiceSettings({ family: "kokoro", ...DEFAULT_KOKORO }); break
+      case "spark":  setVoiceSettings({ family: "spark",  ...DEFAULT_SPARK  }); break
+      case "qwen3":  setVoiceSettings({ family: "qwen3",  ...DEFAULT_QWEN3  }); break
+    }
   }
 
   const handlePlayPause = () => {
     if (!audioRef.current || !audioRef.current.src || audioRef.current.src === window.location.href) {
-      // If no audio is loaded, or src is not a valid audio source, try to generate first.
-      // This can happen if the user clicks play before generating or after an error.
       handleGenerate()
       return
     }
-
     if (isPlaying) {
       audioRef.current?.pause()
     } else {
@@ -139,45 +163,65 @@ export default function SpeechSynthesis() {
     if (!audioRef.current) return
     setIsGenerating(true)
 
-    const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost';
-    const API_PORT = process.env.NEXT_PUBLIC_API_PORT || '8000';
-
-    const voice = (model.includes("marvis") ? "conversational_a" : "af_heart");
+    const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost"
+    const API_PORT = process.env.NEXT_PUBLIC_API_PORT || "8000"
 
     try {
-      const requestBody: any = {
+      const requestBody: Record<string, unknown> = {
         model: model,
         input: text,
-        voice: voice,
         speed: speed,
-      };
+      }
 
-      // Add instruct parameter for Qwen3 VoiceDesign models
-      if (isQwen3VoiceDesign(model)) {
-        requestBody.instruct = voiceInstruct;
-        // Add seed for reproducible voice generation
-        if (useFixedSeed) {
-          // Use a hash of the voice description as seed, or a fixed seed if provided
-          if (seed.trim()) {
-            requestBody.seed = parseInt(seed, 10);
-          } else {
-            // Generate a consistent seed from the voice description
-            let hash = 0;
-            for (let i = 0; i < voiceInstruct.length; i++) {
-              const char = voiceInstruct.charCodeAt(i);
-              hash = ((hash << 5) - hash) + char;
-              hash = hash & hash; // Convert to 32bit integer
-            }
-            requestBody.seed = Math.abs(hash);
+      switch (voiceSettings.family) {
+        case "marvis":
+          requestBody.voice = voiceSettings.voice
+          requestBody.pitch = pitch
+          if (voiceSettings.refAudioPath.trim()) {
+            requestBody.ref_audio = voiceSettings.refAudioPath.trim()
+            requestBody.ref_text = voiceSettings.refText
           }
+          break
+
+        case "kokoro":
+          requestBody.voice = voiceSettings.voice
+          requestBody.lang_code = voiceSettings.langCode
+          requestBody.pitch = pitch
+          break
+
+        case "spark":
+          if (voiceSettings.mode === "clone") {
+            requestBody.ref_audio = voiceSettings.refAudioPath.trim()
+            requestBody.ref_text = voiceSettings.refText
+          } else {
+            requestBody.gender = voiceSettings.gender
+            requestBody.pitch = SPARK_PITCH_MAP[voiceSettings.pitchLevel]
+            requestBody.speed = SPARK_SPEED_MAP[voiceSettings.speedLevel]
+          }
+          break
+
+        case "qwen3": {
+          requestBody.instruct = voiceSettings.instruct
+          if (voiceSettings.useFixedSeed) {
+            if (voiceSettings.seed.trim()) {
+              requestBody.seed = parseInt(voiceSettings.seed, 10)
+            } else {
+              let hash = 0
+              for (let i = 0; i < voiceSettings.instruct.length; i++) {
+                const char = voiceSettings.instruct.charCodeAt(i)
+                hash = ((hash << 5) - hash) + char
+                hash = hash & hash
+              }
+              requestBody.seed = Math.abs(hash)
+            }
+          }
+          break
         }
       }
 
       const response = await fetch(`${API_BASE_URL}:${API_PORT}/v1/audio/speech`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(requestBody),
       })
 
@@ -203,21 +247,18 @@ export default function SpeechSynthesis() {
       audioRef.current.onended = () => {
         setIsPlaying(false)
         setCurrentTime("00:00")
-         // Revoke the object URL to free up resources
         if (audioRef.current?.src.startsWith("blob:")) {
           URL.revokeObjectURL(audioRef.current.src)
         }
       }
     } catch (error) {
       console.error("Error generating speech:", error)
-      // Handle error appropriately in the UI
     } finally {
       setIsGenerating(false)
     }
   }
 
   const handleDownload = () => {
-    // In a real app, this would download the audio file
     alert("Downloading audio...")
   }
 
@@ -225,17 +266,9 @@ export default function SpeechSynthesis() {
     setLiked(isPositive)
   }
 
-  const getCharacterCount = () => {
-    return text.length
-  }
+  const getCharacterCount = () => text.length
 
-  const formatTime = (seconds: number) => {
-    return `00:${seconds.toString().padStart(2, "0")}`
-  }
-
-  const handleVoiceChange = (voice: string) => {
-    setSelectedVoice(voice)
-  }
+  const formatTime = (seconds: number) => `00:${seconds.toString().padStart(2, "0")}`
 
   return (
     <LayoutWrapper activeTab="audio" activePage="text-to-speech">
@@ -276,9 +309,9 @@ export default function SpeechSynthesis() {
             </div>
             <div className="flex items-center space-x-2">
               <button
-                className={`rounded-md bg-sky-500 dark:bg-sky-600 px-3 py-1 text-sm text-white flex items-center hover:bg-sky-600 dark:hover:bg-sky-700 ${isGenerating ? "animate-pulse" : ""}`}
+                className={`rounded-md bg-sky-500 dark:bg-sky-600 px-3 py-1 text-sm text-white flex items-center hover:bg-sky-600 dark:hover:bg-sky-700 ${isGenerating ? "animate-pulse" : ""} disabled:opacity-50 disabled:cursor-not-allowed`}
                 onClick={handleGenerate}
-                disabled={isGenerating}
+                disabled={isGenerateDisabled}
               >
                 {isGenerating ? (
                   <>
@@ -315,6 +348,7 @@ export default function SpeechSynthesis() {
 
           {activeTab === "settings" ? (
             <>
+              {/* Model */}
               <div className="mb-6">
                 <div className="mb-2 flex items-center justify-between">
                   <span className="text-sm">Model</span>
@@ -336,6 +370,7 @@ export default function SpeechSynthesis() {
                 </div>
               </div>
 
+              {/* Quantization — Marvis only */}
               {isMarvisModel(baseModel) && (
                 <div className="mb-6">
                   <div className="mb-2 flex items-center justify-between">
@@ -358,85 +393,112 @@ export default function SpeechSynthesis() {
                 </div>
               )}
 
+              {/* Selected model display */}
               <div className="mb-6">
                 <div className="text-xs text-gray-500 dark:text-gray-400">
-                  <span className="font-medium">Selected Model:</span> <span className="font-mono">{model}</span>
+                  <span className="font-medium">Selected Model:</span>{" "}
+                  <span className="font-mono">{model}</span>
                 </div>
               </div>
 
-              {isQwen3VoiceDesign(baseModel) && (
-                <div className="mb-6">
-                  <label className="block text-sm mb-2">Voice Description</label>
-                  <textarea
-                    className="w-full rounded-md border border-gray-200 dark:border-gray-700 p-2 text-sm bg-white dark:bg-gray-800 focus:border-blue-500 focus:outline-none"
-                    value={voiceInstruct}
-                    onChange={(e) => setVoiceInstruct(e.target.value)}
-                    placeholder="Describe the voice you want (e.g., 'A friendly, warm female voice with clear pronunciation')"
-                    rows={3}
-                  />
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                    Use natural language to describe the voice characteristics (gender, age, tone, emotion, etc.)
-                  </p>
+              {/* Voice Settings — model-specific */}
+              <div className="mb-6 border-t border-gray-200 dark:border-gray-700 pt-4">
+                <span className="block text-sm font-medium mb-3">Voice</span>
 
-                  <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
-                    <div className="flex items-center justify-between mb-2">
-                      <label className="text-sm flex items-center gap-2">
+                {voiceSettings.family === "marvis" && (
+                  <MarvisVoiceSettings
+                    settings={voiceSettings}
+                    onChange={(s) => setVoiceSettings({ family: "marvis", ...s })}
+                  />
+                )}
+                {voiceSettings.family === "kokoro" && (
+                  <KokoroVoiceSettings
+                    settings={voiceSettings}
+                    onChange={(s) => setVoiceSettings({ family: "kokoro", ...s })}
+                  />
+                )}
+                {voiceSettings.family === "spark" && (
+                  <SparkVoiceSettings
+                    settings={voiceSettings}
+                    onChange={(s) => setVoiceSettings({ family: "spark", ...s })}
+                  />
+                )}
+                {voiceSettings.family === "qwen3" && (
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+                        Voice description
+                      </label>
+                      <textarea
+                        className="w-full rounded-md border border-gray-200 dark:border-gray-700 p-2 text-sm bg-white dark:bg-gray-800 focus:border-blue-500 focus:outline-none"
+                        value={voiceSettings.instruct}
+                        onChange={(e) =>
+                          setVoiceSettings({ ...voiceSettings, instruct: e.target.value })
+                        }
+                        placeholder="Describe the voice (e.g., 'A friendly, warm female voice')"
+                        rows={3}
+                      />
+                      <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                        Use natural language: gender, age, tone, emotion, etc.
+                      </p>
+                    </div>
+
+                    <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
+                      <label className="text-xs flex items-center gap-2 mb-1">
                         <input
                           type="checkbox"
-                          checked={useFixedSeed}
-                          onChange={(e) => setUseFixedSeed(e.target.checked)}
+                          checked={voiceSettings.useFixedSeed}
+                          onChange={(e) =>
+                            setVoiceSettings({ ...voiceSettings, useFixedSeed: e.target.checked })
+                          }
                           className="rounded border-gray-300 text-sky-500 focus:ring-sky-500"
                         />
                         Consistent voice (same output each time)
                       </label>
-                    </div>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">
-                      When enabled, the same voice description will always produce the same voice.
-                    </p>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="number"
-                        value={seed}
-                        onChange={(e) => setSeed(e.target.value)}
-                        placeholder="Optional: custom seed"
-                        className="flex-1 rounded-md border border-gray-200 dark:border-gray-700 px-2 py-1 text-sm bg-white dark:bg-gray-800 focus:border-blue-500 focus:outline-none"
-                        disabled={!useFixedSeed}
-                      />
-                      <button
-                        onClick={() => setSeed(Math.floor(Math.random() * 1000000).toString())}
-                        disabled={!useFixedSeed}
-                        className="px-2 py-1 text-xs rounded-md border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50"
-                      >
-                        Random
-                      </button>
+                      <div className="flex items-center gap-2 mt-1">
+                        <input
+                          type="number"
+                          value={voiceSettings.seed}
+                          onChange={(e) =>
+                            setVoiceSettings({ ...voiceSettings, seed: e.target.value })
+                          }
+                          placeholder="Optional: custom seed"
+                          className="flex-1 rounded-md border border-gray-200 dark:border-gray-700 px-2 py-1 text-xs bg-white dark:bg-gray-800 focus:border-blue-500 focus:outline-none"
+                          disabled={!voiceSettings.useFixedSeed}
+                        />
+                        <button
+                          onClick={() =>
+                            setVoiceSettings({
+                              ...voiceSettings,
+                              seed: Math.floor(Math.random() * 1000000).toString(),
+                            })
+                          }
+                          disabled={!voiceSettings.useFixedSeed}
+                          className="px-2 py-1 text-xs rounded-md border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50"
+                        >
+                          Random
+                        </button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
 
+              {/* Speed */}
               <div className="mb-6">
                 <div className="mb-2 flex items-center justify-between">
                   <span className="text-sm">Speed</span>
                   <div className="flex items-center">
                     <div className="flex space-x-2 mr-2">
-                      <button
-                        onClick={() => setSpeed(0.5)}
-                        className={`px-2 py-0.5 text-xs rounded-md ${speed === 0.5 ? "bg-sky-100 dark:bg-sky-900 text-sky-600 dark:text-sky-300" : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300"}`}
-                      >
-                        0.5x
-                      </button>
-                      <button
-                        onClick={() => setSpeed(1)}
-                        className={`px-2 py-0.5 text-xs rounded-md ${speed === 1 ? "bg-sky-100 dark:bg-sky-900 text-sky-600 dark:text-sky-300" : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300"}`}
-                      >
-                        1x
-                      </button>
-                      <button
-                        onClick={() => setSpeed(1.5)}
-                        className={`px-2 py-0.5 text-xs rounded-md ${speed === 1.5 ? "bg-sky-100 dark:bg-sky-900 text-sky-600 dark:text-sky-300" : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300"}`}
-                      >
-                        1.5x
-                      </button>
+                      {[0.5, 1, 1.5].map((s) => (
+                        <button
+                          key={s}
+                          onClick={() => setSpeed(s)}
+                          className={`px-2 py-0.5 text-xs rounded-md ${speed === s ? "bg-sky-100 dark:bg-sky-900 text-sky-600 dark:text-sky-300" : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300"}`}
+                        >
+                          {s}x
+                        </button>
+                      ))}
                     </div>
                     <span className="text-sm font-medium">{speed}x</span>
                   </div>
@@ -455,70 +517,56 @@ export default function SpeechSynthesis() {
                 </div>
               </div>
 
-              <div className="mb-6">
-                <div className="mb-2 flex items-center justify-between">
-                  <span className="text-sm">Pitch</span>
-                  <div className="flex items-center">
-                    <div className="flex space-x-2 mr-2">
-                      <button
-                        onClick={() => setPitch(-5)}
-                        className={`px-2 py-0.5 text-xs rounded-md ${pitch === -5 ? "bg-sky-100 dark:bg-sky-900 text-sky-600 dark:text-sky-300" : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300"}`}
-                      >
-                        Low
-                      </button>
-                      <button
-                        onClick={() => setPitch(0)}
-                        className={`px-2 py-0.5 text-xs rounded-md ${pitch === 0 ? "bg-sky-100 dark:bg-sky-900 text-sky-600 dark:text-sky-300" : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300"}`}
-                      >
-                        Normal
-                      </button>
-                      <button
-                        onClick={() => setPitch(5)}
-                        className={`px-2 py-0.5 text-xs rounded-md ${pitch === 5 ? "bg-sky-100 dark:bg-sky-900 text-sky-600 dark:text-sky-300" : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300"}`}
-                      >
-                        High
-                      </button>
+              {/* Pitch — hidden for Spark and Qwen3 */}
+              {showPitchSlider && (
+                <div className="mb-6">
+                  <div className="mb-2 flex items-center justify-between">
+                    <span className="text-sm">Pitch</span>
+                    <div className="flex items-center">
+                      <div className="flex space-x-2 mr-2">
+                        {([-5, 0, 5] as const).map((p) => (
+                          <button
+                            key={p}
+                            onClick={() => setPitch(p)}
+                            className={`px-2 py-0.5 text-xs rounded-md ${pitch === p ? "bg-sky-100 dark:bg-sky-900 text-sky-600 dark:text-sky-300" : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300"}`}
+                          >
+                            {p === -5 ? "Low" : p === 0 ? "Normal" : "High"}
+                          </button>
+                        ))}
+                      </div>
+                      <span className="text-sm font-medium">{pitch}</span>
                     </div>
-                    <span className="text-sm font-medium">{pitch}</span>
+                  </div>
+                  <div className="flex items-center">
+                    <span className="text-xs text-gray-500 mr-2">-10</span>
+                    <RangeInput
+                      min={-10}
+                      max={10}
+                      step={1}
+                      value={pitch}
+                      onChange={(e) => setPitch(Number.parseInt(e.target.value))}
+                      ariaLabel="Pitch control"
+                    />
+                    <span className="text-xs text-gray-500 ml-2">+10</span>
                   </div>
                 </div>
-                <div className="flex items-center">
-                  <span className="text-xs text-gray-500 mr-2">-10</span>
-                  <RangeInput
-                    min={-10}
-                    max={10}
-                    step={1}
-                    value={pitch}
-                    onChange={(e) => setPitch(Number.parseInt(e.target.value))}
-                    ariaLabel="Pitch control"
-                  />
-                  <span className="text-xs text-gray-500 ml-2">+10</span>
-                </div>
-              </div>
+              )}
 
+              {/* Volume */}
               <div className="mb-4">
                 <div className="mb-2 flex items-center justify-between">
                   <span className="text-sm">Volume</span>
                   <div className="flex items-center">
                     <div className="flex space-x-2 mr-2">
-                      <button
-                        onClick={() => setVolume(0.5)}
-                        className={`px-2 py-0.5 text-xs rounded-md ${volume === 0.5 ? "bg-sky-100 dark:bg-sky-900 text-sky-600 dark:text-sky-300" : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300"}`}
-                      >
-                        Quiet
-                      </button>
-                      <button
-                        onClick={() => setVolume(1)}
-                        className={`px-2 py-0.5 text-xs rounded-md ${volume === 1 ? "bg-sky-100 dark:bg-sky-900 text-sky-600 dark:text-sky-300" : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300"}`}
-                      >
-                        Normal
-                      </button>
-                      <button
-                        onClick={() => setVolume(1.5)}
-                        className={`px-2 py-0.5 text-xs rounded-md ${volume === 1.5 ? "bg-sky-100 dark:bg-sky-900 text-sky-600 dark:text-sky-300" : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300"}`}
-                      >
-                        Loud
-                      </button>
+                      {([0.5, 1, 1.5] as const).map((v) => (
+                        <button
+                          key={v}
+                          onClick={() => setVolume(v)}
+                          className={`px-2 py-0.5 text-xs rounded-md ${volume === v ? "bg-sky-100 dark:bg-sky-900 text-sky-600 dark:text-sky-300" : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300"}`}
+                        >
+                          {v === 0.5 ? "Quiet" : v === 1 ? "Normal" : "Loud"}
+                        </button>
+                      ))}
                     </div>
                     <span className="text-sm font-medium">{volume}x</span>
                   </div>
@@ -558,7 +606,7 @@ export default function SpeechSynthesis() {
           <div className="flex flex-col justify-between h-full flex-1 px-4 py-2">
             <div className="flex items-center justify-between w-full">
               <div className="text-sm">
-                {selectedVoice}: {text.length > 20 ? text.substring(0, 20) + "..." : text}
+                {voiceDisplayLabel}: {text.length > 20 ? text.substring(0, 20) + "..." : text}
               </div>
               <div className="flex items-center space-x-2">
                 <div className="text-xs text-gray-500 dark:text-gray-400 mr-2">How did this sound?</div>
@@ -566,17 +614,13 @@ export default function SpeechSynthesis() {
                   className="rounded-md border border-gray-200 dark:border-gray-700 p-1 hover:bg-gray-50 dark:hover:bg-gray-800"
                   onClick={() => handleFeedback(true)}
                 >
-                  <ThumbsUp
-                    className={`h-4 w-4 ${liked === true ? "text-sky-500" : "text-gray-500 dark:text-gray-400"}`}
-                  />
+                  <ThumbsUp className={`h-4 w-4 ${liked === true ? "text-sky-500" : "text-gray-500 dark:text-gray-400"}`} />
                 </button>
                 <button
                   className="rounded-md border border-gray-200 dark:border-gray-700 p-1 hover:bg-gray-50 dark:hover:bg-gray-800"
                   onClick={() => handleFeedback(false)}
                 >
-                  <ThumbsDown
-                    className={`h-4 w-4 ${liked === false ? "text-sky-500" : "text-gray-500 dark:text-gray-400"}`}
-                  />
+                  <ThumbsDown className={`h-4 w-4 ${liked === false ? "text-sky-500" : "text-gray-500 dark:text-gray-400"}`} />
                 </button>
                 <button
                   className="rounded-md border border-gray-200 dark:border-gray-700 p-1 hover:bg-gray-50 dark:hover:bg-gray-800"
@@ -616,7 +660,6 @@ export default function SpeechSynthesis() {
         </div>
       </div>
 
-      {/* Hidden audio element for actual implementation */}
       <audio ref={audioRef} className="hidden" />
     </LayoutWrapper>
   )

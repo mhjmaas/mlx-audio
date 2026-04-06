@@ -6,4 +6,4 @@ if [ -f ".venv/bin/activate" ]; then
 fi
 
 # Start the MLX Audio server with UI
-python -m mlx_audio.server --host 0.0.0.0
+python -m mlx_audio.server --host 0.0.0.0 --start-ui

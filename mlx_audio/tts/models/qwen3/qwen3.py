@@ -301,6 +301,7 @@ class Model(Qwen3Model):
         ref_text: Optional[str] = None,
         stream: bool = False,
         streaming_interval: float = 2.0,
+        speed: float = 1.0,
         **kwargs,
     ):
         # Load reference audio if provided (handles file paths and mx.array)
@@ -368,8 +369,15 @@ class Model(Qwen3Model):
                     if code_lists and len(code_lists[0]) > 0:
                         audio = decode_audio_from_codes(code_lists[0])[0]
                         if audio.shape[0] > yielded_frame_count:
+                            chunk = audio[yielded_frame_count:]
+                            if abs(speed - 1.0) > 1e-6:
+                                n = max(1, int(chunk.shape[0] / speed))
+                                pos = mx.linspace(0, chunk.shape[0] - 1, n)
+                                left = mx.floor(pos).astype(mx.int32)
+                                right = mx.minimum(left + 1, chunk.shape[0] - 1)
+                                chunk = (1.0 - (pos - left)) * chunk[left] + (pos - left) * chunk[right]
                             yield self.generate_result(
-                                audio=audio[yielded_frame_count:],
+                                audio=chunk,
                                 start_time=time_start,
                                 token_count=generated_token_count - yielded_token_count,
                                 segment_idx=segment_idx,
@@ -390,8 +398,15 @@ class Model(Qwen3Model):
                 audio = decode_audio_from_codes(code_list)[0]
 
                 if audio.shape[0] > yielded_frame_count:
+                    chunk = audio[yielded_frame_count:]
+                    if abs(speed - 1.0) > 1e-6:
+                        n = max(1, int(chunk.shape[0] / speed))
+                        pos = mx.linspace(0, chunk.shape[0] - 1, n)
+                        left = mx.floor(pos).astype(mx.int32)
+                        right = mx.minimum(left + 1, chunk.shape[0] - 1)
+                        chunk = (1.0 - (pos - left)) * chunk[left] + (pos - left) * chunk[right]
                     yield self.generate_result(
-                        audio=audio[yielded_frame_count:],
+                        audio=chunk,
                         start_time=time_start,
                         token_count=generated_token_count - yielded_token_count,
                         segment_idx=segment_idx,
