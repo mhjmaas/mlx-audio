@@ -609,18 +609,6 @@ class Model(nn.Module):
             input_ids_mx, cache=cache, input_embeddings=input_embeddings
         )
 
-        # First decode step uses AUDIO token (24) embedding as input
-        # This matches the C reference: the first LLM decode produces the hidden state
-        # for the first audio frame
-        audio_tok_emb = self.language_model.embed_tokens(
-            mx.array([[self.config.audio_token_id]])
-        )  # (1, 1, dim)
-        hidden = lm_backbone(
-            mx.array([[self.config.audio_token_id]]),
-            cache=cache,
-            input_embeddings=audio_tok_emb,
-        )
-
         all_codes = []
         yielded_frames = 0
         chunk_idx = 0

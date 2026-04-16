@@ -11,6 +11,7 @@ import base64
 import inspect
 import io
 import json
+import logging
 import os
 import subprocess
 import time
@@ -96,6 +97,8 @@ class ModelProvider:
 
 
 app = FastAPI()
+
+logger = logging.getLogger(__name__)
 
 
 def int_or_float(value):
@@ -324,6 +327,32 @@ VOICE_CATALOG = {
         "voices": [],
         "supports_instruct": True,
     },
+    "voxtral": {
+        "type": "voxtral",
+        "voices": [
+            {"id": "casual_male",     "label": "Casual Male",     "group": "English"},
+            {"id": "casual_female",   "label": "Casual Female",   "group": "English"},
+            {"id": "cheerful_female", "label": "Cheerful Female", "group": "English"},
+            {"id": "neutral_male",    "label": "Neutral Male",    "group": "English"},
+            {"id": "neutral_female",  "label": "Neutral Female",  "group": "English"},
+            {"id": "fr_male",         "label": "Male",            "group": "French"},
+            {"id": "fr_female",       "label": "Female",          "group": "French"},
+            {"id": "es_male",         "label": "Male",            "group": "Spanish"},
+            {"id": "es_female",       "label": "Female",          "group": "Spanish"},
+            {"id": "de_male",         "label": "Male",            "group": "German"},
+            {"id": "de_female",       "label": "Female",          "group": "German"},
+            {"id": "it_male",         "label": "Male",            "group": "Italian"},
+            {"id": "it_female",       "label": "Female",          "group": "Italian"},
+            {"id": "pt_male",         "label": "Male",            "group": "Portuguese"},
+            {"id": "pt_female",       "label": "Female",          "group": "Portuguese"},
+            {"id": "nl_male",         "label": "Male",            "group": "Dutch"},
+            {"id": "nl_female",       "label": "Female",          "group": "Dutch"},
+            {"id": "ar_male",         "label": "Male",            "group": "Arabic"},
+            {"id": "hi_male",         "label": "Male",            "group": "Hindi"},
+            {"id": "hi_female",       "label": "Female",          "group": "Hindi"},
+        ],
+        "supports_cloning": False,
+    },
 }
 
 _MODEL_FAMILY_MAP = {
@@ -333,6 +362,7 @@ _MODEL_FAMILY_MAP = {
     "qwen3": "qwen3",
     "voicedesign": "qwen3",
     "voice-design": "qwen3",
+    "voxtral": "voxtral",
 }
 
 
@@ -984,7 +1014,7 @@ class MLXAudioStudioServer:
         except Exception as e:
             raise Exception(f"✗ Failed to start UI: {e}")
 
-    def start_server(self, host="localhost", port=8000, reload=False, workers=2):
+    def start_server(self, host="localhost", port=8000, reload=False, workers=2, log_level="info"):
         if self.start_ui:
             self.start_ui_background()
             time.sleep(2)
@@ -1000,6 +1030,7 @@ class MLXAudioStudioServer:
                 port=port,
                 reload=reload,
                 workers=workers,
+                log_level=log_level,
                 loop="asyncio",
             )
         finally:
@@ -1062,6 +1093,13 @@ def main():
         default="logs",
         help="Directory to save server logs",
     )
+    parser.add_argument(
+        "--log-level",
+        type=str,
+        default="info",
+        choices=["critical", "error", "warning", "info", "debug", "trace"],
+        help="Uvicorn log level",
+    )
 
     args = parser.parse_args()
     if isinstance(args.workers, float):
@@ -1075,6 +1113,7 @@ def main():
         port=args.port,
         reload=args.reload if args.workers is None else False,
         workers=args.workers,
+        log_level=args.log_level,
     )
 
 
